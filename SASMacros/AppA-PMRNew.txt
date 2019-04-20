@@ -1,0 +1,640 @@
+***************
+*  pmrnew.mcr *
+***************;
+
+%LET _SAMPSIZ=_SAMPSIZ; * DEFAULT NAME;
+%LET _STDUM=_STDUM;     * DEFAULT NAME;
+%LET _STRATA=&_STDUM;   * DEFAULT STRATUM (=1);
+%LET _CONTROL=_CNTLDUM; * DEFAULT CONTROL VARIABLE (=OBSERVATION NO.);
+%LET _SIZE=_SIZEDUM;    * DEFAULT SIZE MEASURE (=1);
+%MACRO _FIXINPT; %MEND; * DEFAULT FOR NO CHANGES IN INPUT FRAME SAS DATASET;
+%LET _NONE=_FS1;        * CONTROL VARIABLE ARRAYS;
+%LET _ONE=_FS1;
+%LET _TWO=_FS1-_FS2;   
+%LET _THREE=_FS1-_FS3;
+%LET _FOUR=_FS1-_FS4;
+%LET _FIVE=_FS1-_FS5;
+%LET _SIX=_FS1-_FS6;
+%LET _SEVEN=_FS1-_FS7;
+%LET _EIGHT=_FS1-_FS8;
+%LET _NINE=_FS1-_FS9;
+%LET _TEN=_FS1-_FS10;
+%LET _WTNUM=1;          * DEFAULT NUMERATOR FOR WEIGHT COMPUTATION;
+%LET _SAMPN=SAMPNO;     * DEFAULT NAME FOR STRATUM SAMPLE SIZE;
+%LET _SAMPNUM=2;        * DEFAULT STRATUM SAMPLE SIZE;
+%LET _SEEDHD=0;         * DEFAULT RANDOM START SEED (CLOCK USED);
+%LET _SEEDPMR=0;        * DEFAULT RANDOM SELECTION SEED (CLOCK USED);
+%LET _SEEDPNT=0;        * DEFAULT _SELPNT SEED WHEN PROB=1 (CLOCK USED);
+%LET _WEIGHTA=_WEIGHTA; * DEFAULT NAME FOR ALT. WT. WHEN ROUNDED ALLOC. USED *;
+%LET _EXPNA=_EXPNA;     * DEFAULT NAME FOR ALT. EXPN., WITH ROUNDED ALLOCATIONS;
+%MACRO _NO;    %MEND;   * NULL ALTERNATIVE TO CONTENTS OF MACRO _RSTART;
+%MACRO _NWANTED;        * DEFAULT FOR NOT COMPUTING ALTERNATIVE WEIGHTS;     
+     DROP &_WEIGHTA &_EXPNA;
+     %MEND _NWANTED;
+%MACRO _ALTWTS; %_NWANTED %MEND;
+                        * DEFAULT FOR NO ALTERNATIVE WEIGHTS OR EXPNS; 
+%MACRO _WANTED; &_WEIGHTA=&_WEIGHT*&_SAMPN/&_ALLOC;
+              &_EXPNA=&_EXPN*&_ALLOC/&_SAMPN; %MEND;
+                        * COMPUTES EXPECTED INCLUSION PROBABILITY AND 
+                          WEIGHT BASED ON EXPECTED ALLOCATION;
+%LET _OTHER=     ;      * DEFAULT LIST OF EXTRA VARIABLES TO BE KEPT;
+%LET _OTHER2=      ;    * DEFAULT FOR INTERNAL VARIABLES TO BE KEPT;
+%LET _NCVARS=_FS1   ;   * DEFAULT CONTROL VARIABLE ARRAY;
+%MACRO _SUMSQS;  %MEND; * DEFAULT FOR NO SUM-OF-SQUARES COMPUTATIONS;
+%LET _DROP=   ;         * DEFAULT FOR USUALLY-KEPT VARS TO BE DROPPED;
+%LET _DROP2=_COND _LAGF _LAGSEN _F _SEN _SN _TEST &_NCVARS _CONDH _R;
+                          * KEEPS INTERNAL VARS OUT OF FINFRAME OUTPUT;
+
+%MACRO _DEL; PROC DELETE DATA=_D1S _D2; %MEND;
+                          * USED IN DRIVER MACROS IN LIEU OF _ADDSIZE;
+%MACRO _SAVESRT;  %MEND;  * DEFAULT FOR NO OUTPUT OF SORTED FRAME;
+%LET _SRTFILE=_SRTFILE  ; * DEFAULT IN LIEU OF SORTED FRAME OUTPUT FILE;
+%LET _ALLOC=_ALLOC;       * DEFAULT NAMES;
+%LET _DATAOUT=_DATAOUT;
+%LET _TOTSIZE=_TOTSIZE;
+%LET _SELPNT=_SELPNT;
+%LET _SELID=_SELID;
+%LET _ZONE=_ZONE;
+%LET _EXPN=_EXPN;
+%LET _WEIGHT=_WEIGHT;
+%LET _N=_N;
+%LET _DSQ=_DSQ;
+%LET _EXPNA=_EXPNA;
+%LET _WEIGHTA=_WEIGHTA;
+%LET _TOTN=_TOTN;
+%LET _SSQS=_SSQS;
+%LET _DROP3=&_SSQS _SNO;
+%MACRO _NOSELID; DROP &_SELID; %MEND;
+                        * NO CREATION OF _SELID VALUES;
+%MACRO _SELIDEF; %_NOSELID %MEND _SELIDEF; 
+                        * DEFAULT FOR NO CREATION OF _SELID VALUES;
+%MACRO _A1TO9; 
+    &_SELID=&_ID*10+_I;
+    LABEL &_SELID = 'SEGMENT SELECTION POINT ID';
+    %MEND;              * FOR _SELID, APPEND '1', '2', ETC. TO _ID;
+%MACRO _A01TO99;
+    &_SELID=&_ID*100+_I;
+    LABEL &_SELID = 'SEGMENT SELECTION POINT ID';
+    %MEND;              * FOR _SELID, APPEND '01', '02', ETC. TO _ID;
+%MACRO _ALFORM; 
+    &_SELID=_STRNO*1000+&_ZONE;
+    LABEL &_SELID = 'SEGMENT SELECTION POINT ID';
+    %MEND;         * FOR _SELID WHEN _ID IS ALPHANUMERIC--USE STRATUM & ZONE;
+
+***************************************************************;
+*                                                             *;
+* THIS MACRO IS USED TO COPY THE INPUT FRAME  AND COMPUTE AND *;
+* ADD STRATUM TOTALS.                                         *;
+*                                                             *;
+***************************************************************;
+%MACRO _FRMCOPY;
+
+*                                COPY THE FRAME;
+DATA _D1;
+    ARRAY _F &_CONTROL;
+    ARRAY _FS &_NCVARS;
+    SET &_FRAME;
+    RETAIN &_STDUM _SIZEDUM 1 &_SAMPN 0 &_ALLOC -1 &_NCVARS &_CONTROL 
+    SAMPNO &_SAMPNUM &_TOTN _CNTLDUM 0;
+*                                MAKE CHANGES IN INPUT DATASET;
+    %_FIXINPT
+*                                DEFAULT STRATA CONTROL ;
+    _CNTLDUM+1;
+*                                COPY CONTROL VARIABLES ;
+    IF _N_=1 THEN DO ;
+        _NF=0;
+        DO OVER _F;
+            _NF+1;
+            END;
+        _NFS=0;
+        DO OVER _FS;
+            _NFS+1;
+            END;
+        IF _NF NE _NFS THEN DO;
+            PUT 'NUMBER OF CONTROL VARIABLES DOES NOT AGREE WITH'
+            ' NUMBER STATED IN INPUT MACRO VARIABLE _NCVARS ';
+            ABORT ABEND;
+            END;
+        END;
+    KEEP &_ID &_STRATA &_CONTROL &_SIZE &_SAMPN &_OTHER &_NCVARS &_ALLOC;
+    DO OVER _F;
+        _FS=_F;
+        END;
+
+PROC SORT DATA=_D1 OUT=_D1S;  BY &_STRATA &_NCVARS;
+
+PROC DELETE DATA=_D1;
+*                                CALCULATE STRATUM SIZE;
+PROC MEANS NOPRINT N SUM;  BY &_STRATA;
+    VAR &_SIZE;
+    OUTPUT OUT=_D2 SUM=&_TOTSIZE N=&_TOTN;
+*                                MERGE FRAME AND STRATUM SIZES;
+DATA &_DATAOUT;  MERGE _D1S _D2;  BY &_STRATA;
+    
+DROP _FREQ_ _TYPE_;
+%MEND _FRMCOPY;
+
+******************************************************************;
+*                                                                *;
+* THIS MACRO IS USED TO TRANSFER SAMPLE SIZES FROM _SAMPSIZ TO   *;
+* THE FRAME.                                                     *;
+*                                                                *;
+******************************************************************;
+%MACRO _ADDSIZE;
+    DROP &_SAMPN;
+PROC DELETE DATA=_D1S _D2;
+*                                COPY SAMPLE SIZES;
+DATA _D4;
+    SET &_SAMPSIZ;
+    RETAIN &_ALLOC -1;
+    KEEP &_STRATA &_SAMPN &_ALLOC;
+*                                SORT AND MERGE TO FRAME;
+PROC SORT;  
+    BY &_STRATA;
+
+DATA _D5;  MERGE &_DATAOUT(IN=_IN3) _D4(IN=_IN4);  BY &_STRATA;
+*                                 VERIFY MATCH;
+    IF NOT(_IN3 AND _IN4) THEN GO TO NOMATCH;
+    RETURN;
+NOMATCH:
+    PUT 'FRAME AND SAMPLE SIZE DATA SET DO NOT MATCH' /
+        ' _STRATA ' / &_STRATA _IN4= _IN3=;
+    ABORT ABEND;
+
+PROC DELETE DATA=_D4 &_DATAOUT;
+
+DATA &_DATAOUT; SET _D5;
+
+PROC DELETE DATA=_D5;
+
+%MEND _ADDSIZE;
+
+***************************************************************;
+*                                                             *;
+* THESE MACROS FORM A SERPENTINE ORDERING OF THE FRAME BASED  *;
+* ON THE CONTROL VARIABLES (_CONTROL) AND ASSUMES THAT THERE  *;
+* ARE FROM TWO TO FIVE CONTROL VARIABLES, AS INDICATED BY     *;
+* -NCVARS AND THE DRIVER MACRO.                               *;
+*                                                             *;
+***************************************************************;
+%MACRO _SERP2;
+
+*                                REORDER THE 2ND VARIABLE;
+
+DATA _DSERP1;  
+    SET &_DATAOUT   ;  
+    BY &_STRATA &_NCVARS;
+*                                REV KEEPS TRACK OF WHICH WAY TO SORT;
+    RETAIN _REV -1;
+    DROP _REV;
+    ARRAY _ST &_STRATA;
+*                             INITIALIZE FOR EACH STRATUM;
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN _REV=-1;
+        END;
+*                                FLIP FLOP FS2 FOR EACH LEVEL OF FS1;
+    IF FIRST._FS1 THEN _REV=_REV*(-1);
+    _FS2=_REV*_FS2;
+PROC DELETE DATA=&_DATAOUT;
+PROC SORT DATA=_DSERP1 OUT=&_DATAOUT; BY &_STRATA &_NCVARS;
+PROC DELETE DATA=_DSERP1;
+%MEND _SERP2;
+
+%MACRO _SERP3;
+*                                REORDER VARIABLE #3;
+
+DATA _DSERP2;  SET &_DATAOUT;  BY &_STRATA &_NCVARS;
+*                                REV KEEPS TRACK OF WHICH WAY TO SORT;
+    RETAIN _REV -1;
+    DROP _REV;
+    ARRAY _ST &_STRATA;
+*                             INITIALIZE FOR EACH STRATUM;
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN _REV=-1;
+        END;
+*                                FLIP FLOP FS3 FOR EACH LEVEL OF FS2;
+    IF FIRST._FS2 THEN _REV=_REV*(-1);
+    _FS3=_REV*_FS3;
+PROC DELETE DATA=&_DATAOUT;
+PROC SORT DATA=_DSERP2 OUT=&_DATAOUT; BY &_STRATA &_NCVARS;
+PROC DELETE DATA=_DSERP2;
+%MEND _SERP3;
+
+%MACRO _SERP4;
+*                                REORDER VARIABLE #4;
+
+DATA _DSERP3;  SET &_DATAOUT;  BY &_STRATA &_NCVARS;
+*                                REV KEEPS TRACK OF WHICH WAY TO SORT;
+    RETAIN _REV -1;
+    DROP _REV;
+    ARRAY _ST &_STRATA;
+
+*                             INITIALIZE FOR EACH STRATUM;
+
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN _REV=-1;
+        END;
+*                                FLIP FLOP FS4 FOR EACH LEVEL OF FS3;
+    IF FIRST._FS3 THEN _REV=_REV*(-1);
+    _FS4=_REV*_FS4;
+
+PROC DELETE DATA=&_DATAOUT;
+
+PROC SORT DATA=_DSERP3 OUT=&_DATAOUT; 
+    BY &_STRATA &_NCVARS;
+
+PROC DELETE DATA=_DSERP3;
+
+%MEND _SERP4;
+
+%MACRO _SERP5;
+*                                REORDER VARIABLE #5;
+DATA _DSERP4;
+    SET &_DATAOUT; 
+    BY &_STRATA &_NCVARS;
+*                                REV KEEPS TRACK OF WHICH WAY TO SORT;
+    RETAIN _REV -1;
+    DROP _REV;
+    ARRAY _ST &_STRATA;
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN _REV=-1;
+        END;
+*                                FLIP FLOP FS5 FOR EACH LEVEL OF FS4;
+    IF FIRST._FS4 THEN _REV=_REV*(-1);
+    _FS5=_REV*_FS5;
+
+PROC DELETE DATA=&_DATAOUT;
+
+PROC SORT DATA=_DSERP4 OUT=&_DATAOUT; 
+    BY &_STRATA &_NCVARS;
+
+PROC DELETE DATA=_DSERP4;
+
+%MEND _SERP5;
+
+**************************************************************;
+*                                                            *;
+*  THIS MACRO SELECTS A UNIT AT RANDOM TO BE THE FIRST ONE   *;
+*  IN A STRATUM AND MOVES IT TO THE HEAD OF THE LIST         *;
+*                                                            *;
+**************************************************************;
+%MACRO _RSTART;
+DATA _DH1; 
+    SET &_DATAOUT;
+    ARRAY _ST &_STRATA;
+    RETAIN _ACCSIZE _RAND;
+*                             INITIALIZE FOR EACH STRATUM;
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN DO;
+            _RAND=UNIFORM(&_SEEDHD)*&_TOTSIZE;
+            _ACCSIZE=0;
+            END;
+        END;
+*                              SELECT RANDOM HEAD OF LIST;
+    _ACCSIZE=_ACCSIZE+&_SIZE;
+    _HEAD=(_RAND GT _ACCSIZE);
+    DROP _ACCSIZE _RAND;
+
+PROC DELETE DATA=&_DATAOUT;
+
+*                              MOVE HEAD TO TOP OF LIST;
+PROC SORT DATA=_DH1 OUT=&_DATAOUT; 
+     BY &_STRATA _HEAD &_NCVARS;
+
+PROC DELETE DATA=_DH1;
+%MEND _RSTART;
+
+****************************************************************;
+*                                                              *;
+*  THIS MACRO PROVIDES FOR RECORDING EACH MULTIPLE-HIT SAMPLE  *;
+*  UNIT ONCE FOR EVERY HIT.                                    *;
+*                                                              *;
+****************************************************************;
+%MACRO _NTIMES;
+   DO _I=1 TO &_N;
+       &_ZONE=&_ZONE+1;
+       %_SELIDEF
+       OUTPUT &_OUTSAMP;
+       END;
+   DROP &_SELPNT;
+%MEND _NTIMES;
+
+%MACRO _RECORD; %_NTIMES %MEND;  * DEFAULT VARIABLE FOR SELECTION RECORDING;  
+
+****************************************************************;
+*                                                              *;
+*  THIS MACRO PROVIDES FOR RECORDING EACH MULTIPLE-           *;
+*  HIT SAMPLE UNIT ONLY ONCE.                                  *;
+*                                                              *;
+****************************************************************;
+%MACRO _ONCE;
+    DROP &_SELPNT &_SELID;
+    &_ZONE=&_ZONE+&_N;
+    OUTPUT &_OUTSAMP;
+%MEND _ONCE;
+
+****************************************************************;
+*                                                              *;
+*  THIS MACRO PROVIDES FOR RECORDING EACH MULTIPLE-HIT SAMPLE  *;
+*  UNIT ONCE FOR EVERY HIT, AND ALSO RECORDING THE SELECTION   *;
+*  POINT FOR EACH UNIT, IN TERMS OF FRACTION OF SIZE-MEASURE,  *;
+*  FOR USE IN SUBDIVIDING UNIIS CONSIDERED TOO LARGE.          *;
+*                                                              *;
+****************************************************************;
+%MACRO _SELPNTS;
+    RETAIN _XX &_SEEDPNT;
+    DO _I=1 TO &_N;
+        &_ZONE=&_ZONE+1;
+        IF _I LE FLOOR(&_EXPN) THEN &_SELPNT=(RANUNI(_XX)+_I-1)/&_EXPN;
+        ELSE IF _CONDH=1 THEN &_SELPNT=(_R*(1-_LAGF)+_I-1)/&_EXPN;
+        ELSE &_SELPNT=(_R*_LAGF+_I-_LAGF)/&_EXPN;
+        %_SELIDEF
+        LABEL &_SELPNT = 'SELECTION POINT FOR SUBSEGMENTATION';
+        OUTPUT &_OUTSAMP;
+        END;
+%MEND _SELPNTS;
+*************************************************************;
+*                                                           *;
+*  THIS MACRO SELECTS A PROBABILITY MINIMUM REPLACEMENT     *;
+*  SAMPLE FROM AN ORDERED FRAME.                            *;
+*                                                           *;
+*************************************************************;
+
+%MACRO _PMR;
+
+DATA _DSQ(KEEP=&_STRATA _SNO &_SSQS) &_SRTFILE &_OUTSAMP (KEEP=&_ID
+    &_STRATA &_CONTROL &_ZONE &_SIZE &_EXPN &_WEIGHT &_N &_OTHER2 &_SAMPN
+    _LAGSN &_TOTSIZE &_OTHER &_SELPNT &_SELID &_WEIGHTA &_EXPNA) _EXPFILE
+    (KEEP= &_STRATA &_EXPN &_SAMPN);
+    SET &_DATAOUT;    
+    RETAIN _COND _LAGF _LAGSN _ACCSIZE &_SSQS _SNO &_ZONE _LAGSEN _STRNO 0;
+    RETAIN &_SELPNT &_SELID &_WEIGHTA &_EXPNA _FINLOC 0 ;
+    DROP _LAGSN &_DROP &_DROP2;
+    ARRAY _ST &_STRATA;
+    LENGTH &_N &_ZONE _SN 3;
+*                             INITIALIZE FOR EACH STRATUM;
+    DO OVER _ST;
+        IF _ST NE LAG(_ST) THEN DO;
+            _STRNO=_STRNO+1;
+            _COND=1;
+            _LAGF=0;
+            _LAGSN=0;
+            _ACCSIZE=0;
+            &_ZONE=0;
+            &_SSQS=0;
+            _FINLOC=0;
+            END;
+        END;
+    _FINLOC+1;
+*                             ACCUMULATE SIZE AND CALULATE PARAMETERS;
+    IF &_SIZE <=0 THEN RETURN;
+    _ACCSIZE=_ACCSIZE+&_SIZE;
+    _SEN=ROUND(&_SAMPN*(_ACCSIZE/&_TOTSIZE),1.0E-12);
+    _SN=INT(_SEN);
+    _F=_SEN-_SN;
+    _CONDH=_COND;
+    %_SUMSQS
+*                            TEST CONDITION OF LAST SELECTION;
+/*                            N(1)+N(2)+...+N(I-1) = I(I-1) */
+    IF _COND=1 THEN DO;
+/*                            CASE 1 -- F(I)=0 */
+    IF _F=0 THEN _TEST=0;
+    ELSE DO;
+/*                            CASE2 -- F(I)>F(I-1)>=0 */
+        IF (_F>_LAGF>=0) THEN _TEST=(_F-_LAGF)/(1-_LAGF);
+        ELSE DO;
+/*                             CASE 3 -- F(I-1)>=F(I)>0 */
+            IF (_LAGF>=_F>0) THEN _TEST=0;
+            ELSE DO;
+/*                             SOMETHING WRONG */
+                PUT 'CASES NOT SATISFIED UNDER CONDITION 1' // _ALL_;
+                ABORT ABEND;
+                END;
+            END;
+        END;
+    END;
+    ELSE DO;
+/*                            N(1)+N(2)+...+N(I-1)=I(I-1)+1 */
+/*                            CASE1 -- F(I)=0 */
+        IF _F=0 THEN _TEST=0;
+        ELSE DO;
+/*                            CAES 2 -- F(I)>F(I-1)>=0 */
+            IF (_F>_LAGF>=0) THEN _TEST=1;
+            ELSE DO;
+/*                            CASE 3 -- F(I-1)>=F(I)>0 */
+                IF(_LAGF>=_F>0) THEN _TEST=_F/_LAGF;
+                ELSE DO;
+*                            SOMETHING WRONG;
+                    PUT 'CASES NOT SATISFIED UNDER CONDTION 2' // _ALL_;
+                    ABORT ABEND;
+                END;
+            END;
+        END;
+    END;
+
+/*         SELECT A RANDOM NUMBER AND TEST IF N(1)+...+N(I)=I(I)+1 */
+    _R=UNIFORM(&_SEEDPMR);
+    IF _TEST>_R THEN DO;
+        _SN=_SN+1;
+        _COND=2;
+        END;
+    ELSE _COND=1;
+&_EXPN=&_SAMPN*(&_SIZE/&_TOTSIZE);  * COMPUTE EXPECTED TIMES SELECTED;
+OUTPUT _EXPFILE;                    * RECORD EXPECTED TIMES AND SAMPLE SIZES;
+*                             CHECK IF PRESENT UNIT IS IN SAMPLE;
+    &_N=_SN-_LAGSN;
+    IF &_N GT 0 THEN DO;  
+        &_WEIGHT=&_WTNUM/&_EXPN;    * COMPUTE SAMPLING WEIGHT, EACH SELECTION;
+        %_ALTWTS  * IF ROUNDED STRATA ALLOCATIONS USED, COMPUTE OVERALL VALUES;
+        %_RECORD  
+        END;
+*                              OPTIONALLY RECORD SORTED FILE;
+    %_SAVESRT       ;
+*                           SET UP VALUES FOR NEXT UNIT;
+    _LAGSEN=_SEN;
+    _LAGSN=_SN;
+    _LAGF=_F;
+    LABEL &_EXPN = EXPECTED NUMBER OF TIMES SELECTED
+          &_N = NUMBER OF TIMES SELECTED
+          &_ZONE = SELECTION ZONE (ORDER OF SELECTION)
+          &_WEIGHT = SAMPLING-STAGE WEIGHT
+          &_TOTSIZE = STRATUM TOTAL OF SIZE-MEASURES
+          &_SAMPN = STRATUM SAMPLE SIZE;
+*              SUM EXPECTED SELECTION TIMES WITHIN EACH STRATUM, 
+               AND ADD SAMPLE SIZE FOR COMPARISON ;    
+PROC MEANS SUM NOPRINT DATA=_EXPFILE;
+    BY &_STRATA;
+    VAR &_EXPN;
+    ID &_SAMPN;        
+    OUTPUT OUT=_TOTALS SUM=EXPTOTAL;
+PROC PRINT DATA=_TOTALS;
+    VAR &_STRATA &_SAMPN EXPTOTAL;
+    TITLE 'STRATA SAMPLE SIZES AND SUMS OF EXPECTED HITS';
+
+*              CHECK FOR MULTIPLE-HIT AND NPARTS>1 COMBINATIONS;
+%_CHECKNS
+%MEND _PMR;
+
+***************************************************************;
+*                                                             *;
+*  THIS MACRO DETERMINES THE FIRST AND LAST ZONE(S) FOR EACH  *;
+*  FRAME RECORD, AND RECORDS THE SORTED FRAME ON DISK.        *;
+*                                                             *;
+***************************************************************;
+%MACRO _OK;
+    LENGTH _FZONE _LZONE 3;
+    IF _ACCSIZE=&_SIZE THEN _FZONE=1;
+    ELSE _FZONE=CEIL(_LAGSEN+.000001);
+    _LZONE=CEIL(_SEN);
+    OUTPUT &_SRTFILE;
+%MEND _OK;
+****************************************************************;
+*                                                              *;
+*  THIS MACRO PROVIDES FOR COMPUTATION AND RECORDING OF ZONE   *;
+*  SUMS OF SQUARES OF FRACTIONAL PARTS OCCUPIED BY DIFFERENT   *;
+*  RESPONDENTS, FOR USE IN COMPUTING FINITE POPULATION FACTORS.*;
+*                                                              *;
+****************************************************************;
+%MACRO _YES;
+    LENGTH _SNO 3;
+    _LAGSN1=_LAGSN+1-_COND;
+    IF _SN=_LAGSN1 THEN &_SSQS=&_SSQS+(_F-_LAGF)**2;
+    ELSE DO;
+        _LP1=_LAGSN1+1;
+        &_SSQS=&_SSQS+(1-_LAGF)**2;
+        _SNO=_LP1;
+        OUTPUT _DSQ;
+        IF _SN GT _LP1 THEN DO;
+            &_SSQS=1;
+            _NM=_SN-_LP1;
+            DO _II=1 TO _NM;
+                _SNO=_SNO+1;
+                OUTPUT _DSQ;
+                END;
+            END;
+        &_SSQS=_F**2;
+        END;
+%MEND _YES;
+
+******************************************************************;
+*                                                                *;
+* THIS MACRO IS USED TO ADD SUMS OF SQUARES TO THE OUTPUT FILE.  *;
+*                                                                *;
+******************************************************************;
+%MACRO _SS;
+DATA _D1;
+    SET _DSQ;
+    RENAME _SNO=&_ZONE;
+
+DATA &_OUTSAMP;
+    MERGE &_OUTSAMP _D1;
+    BY &_STRATA &_ZONE;
+%MEND _SS;
+
+****************************************************************;
+*                                                              *;
+*  THIS MACRO DRIVES MACRO _PMR AND ASSUMES THAT:              *;
+*    1. ALL PROBABILITIES OF SELECTION ARE TO BE EQUAL.        *;
+*    2. THE NUMBER OF UNITS IN THE FRAME IS ENTERED VIA MACRO  *;
+*       _FRAMNUM.                                              *;
+*    3. THE SIZE OF SAMPLE IS ENTERED VIA MACRO _SAMPNUM.      *;
+*    4. NO SORTING IS DESIRED FOR ANY PURPOSE.                 *;
+*    5. THERE ARE NO EXPLICIT STRATA.                          *;
+*                                                              *;
+****************************************************************;
+%MACRO _PMR3;
+DATA _DATAOUT;
+    SET &_FRAME;
+    RETAIN _SIZEDUM &_STDUM 1 _FS1 0;
+    RETAIN &_TOTSIZE &_TOTN &_FRAMNUM;
+    RETAIN &_SAMPN &_SAMPNUM ;
+    _CNTLDUM+1;
+    %_PMR
+%MEND _PMR3;
+
+***********************************************************************;
+*                                                                     *;
+*  THIS MACRO DRIVES THE MACROS _FRMCOPY, _RSTART, & PMR AND ASSUMES: *;
+*  1.  THE SAMPLE SIZES ARE ALREADY ON THE DATA SET                   *;
+*  2. A CONVENTIONAL NESTED ORDERING BY THE CONTROL VARIABLES         *;
+*     IS DESIRED.                                                     *;
+*  3. THERE ARE AT MOST 10 CONTROL VARIABLES.                         *;
+***********************************************************************;
+%MACRO _PMR1; %_FRMCOPY %_DEL %_RSTART %_PMR %MEND _PMR1;
+
+**********************************************************************;
+*                                                                    *;
+*  THIS MACRO DRIVES THE MACROS _FRMCOPY,_RSTART,& _PMR AND ASSUMES: *;
+*  1. THE SAMPLE SIZES ARE ON THE SAS DATA SET _SAMPSIZ.             *;
+*  2. A CONVENTIONAL NESTED ORDERING BY THE CONTROL VARIABLES        *;
+*     IS DESIRED.                                                    *;
+*  3. THERE ARE AT MOST 10 CONTROL VARIABLES.                        *;
+**********************************************************************;
+%MACRO _PMR2; %_FRMCOPY %_ADDSIZE %_RSTART %_PMR %MEND _PMR2; 
+
+******************************************************************;
+*                                                                *;
+*  THESE MACROS DRIVE THE MACROS _FRMCOPY, _SERP2-5, -RSTART, &  *;
+*  _PMR AND ASSUME:                                              *;
+*  1.  THE SAMPLE SIZES ARE ALREADY ON THE DATA SET              *;
+*  2.  A SERPENTINE ORDERING BY THE CONTROL VARIABLES (-CONTROL) *;
+*      IS DESIRED WITHIN EACH STRATUM.                           *;
+*  3.  THERE ARE AT MOST FIVE CONTROL VARIABLES.                 *;
+******************************************************************;
+%MACRO _PMR1S2;  %_FRMCOPY %_DEL %_SERP2 %_RSTART %_PMR %MEND _PMR1S2;
+%MACRO _PMR1S3; %_FRMCOPY %_DEL %_SERP2 %_SERP3 %_RSTART %_PMR %MEND _PMR1S3;
+%MACRO _PMR1S4;  %_FRMCOPY %_DEL %_SERP2 %_SERP3 %_SERP4 %_RSTART %_PMR 
+ %MEND _PMR1S4;
+%MACRO _PMR1S5;  %_FRMCOPY %_DEL %_SERP2 %_SERP3 %_SERP4 %_SERP5 %_RSTART
+ %_PMR %MEND _PMR1S5;
+
+*******************************************************************;
+*  THESE MACROS DRIVE THE MACROS _FRMCOPY, _ADDSIZE, _SERP2-5,    *;
+*  _RSTART, & _PMR AND ASSUMES:                                   *;
+*  1. THE SAMPLE SIZES ARE ON THE DATA SET _SAMPSIZ.              *;
+*  2. A SERPENTINE ORDERING BY THE CONTROL VARIABLES IS DESIRED   *;
+*     WITHIN EACH STRATUM.                                        *;
+*  3. THERE ARE AT MOST FIVE CONTROL VARIABLES.                   *;
+*******************************************************************;
+%MACRO _PMR2S2;  %_FRMCOPY %_ADDSIZE %_SERP2 %_RSTART %_PMR
+ %MEND _PMR2S2;
+%MACRO _PMR2S3;  %_FRMCOPY %_ADDSIZE %_SERP2 %_SERP3 %_RSTART %_PMR
+ %MEND _PMR2S3;
+%MACRO _PMR2S4;  %_FRMCOPY %_ADDSIZE %_SERP2 %_SERP3 %_SERP4 %_RSTART
+ %_PMR %MEND _PMR2S4;
+%MACRO _PMR2S5;  %_FRMCOPY %_ADDSIZE %_SERP2 %_SERP3 %_SERP4 %_SERP5
+%_RSTART  %_PMR %MEND _PMR2S5;
+
+*******************************************************************;
+*                                                                 *;
+*  THIS MACRO CHECKS AN OUTPUT SAMPLE OF AREA SEGMENTS TO DETECT  *;
+*  COMBINATIONS OF MULTIPLE HITS AND MORE THAN ONE BLOCK/ED.      *;
+*                                                                 *;
+*******************************************************************;
+%MACRO _CHECKNS;
+PROC MEANS MAX DATA=&_OUTSAMP;
+    VAR &_N;
+TITLE ' ';
+DATA _CHK;
+    SET &_OUTSAMP END=_EOF;
+    RETAIN NPARTS 0;
+    FILE PRINT;
+    IF NPARTS LE 0 THEN STOP;
+    ELSE IF &_N GT 1 AND NPARTS GT 1 THEN DO;
+        PUT
+'*********************************************************************'/
+/       'IMPORTANT NOTICE!!!!!!!!!!!!!!!'//
+        '     IN AT LEAST ONE CASE, A SEGMENT MADE UP OF TWO OR MORE  BL
+OCKS'/'OR EDS HAS BEEN SELECTED MORE THAN ONCE.  FOR MERGING THE SAMPLE
+WITH'/'OUTPUT FROM MACRO _COMBINE OR _COMBINS IT WILL THEREFORE NOT BE'/
+'POSSIBLE TO USE A SIMPLE MERGING PROCEDURE.'/'IT WILL BE NECESSART TO
+SEPARATE OUT SECOND AND SUBSEQUENT "HITS" AND DO SEPARATE MERGING'//
+'*********************************************************************';
+        STOP;
+        END;
+    IF _EOF THEN PUT 'THE SAMPLE OF SEGMENTS DOES NOT INCLUDE ANY THAT H
+AVE BEEN SELECTED'/'MORE THAN ONCE AND ALSO INCLUDE MORE THAN ONE BLOCK
+OR ED. '/'IT CAN THEREFORE BE MERGED WITH _COMBINE OR _COMBINS OUTPUT BY
+MEANS OF A COMMON MERGING OPERATION';
+
+%MEND _CHECKNS;

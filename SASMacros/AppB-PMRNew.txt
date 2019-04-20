@@ -1,0 +1,64 @@
+*****************************************************************
+* Program:       Pmrnew.mcr                                     *
+* Programmer:                                                   *
+* Last Modified: Early 1990s                                    *
+*                                                               * 
+* Note:  Problems or questions with the job template can be     *
+*        directed to                 .                          *
+*****************************************************************;
+
+*************
+* Example   *
+*************;
+%include mcr;
+%let _frame=dsn.frame;           /*input data set*/
+%let _outsamp=dsn.samp;          /*output data set*/
+%let _strata=stratum;            /*explicit strata*/
+%let _control=region size;       /*sorting variables*/
+%let _ncvars=&_two;              /*number of sorting variables*/
+%let _size=size;                 /*size measure*/
+%let _sampn=sampn;               /*sample size variable*/
+%let _id=id;                     /*id variable*/
+%let _seedhd=6736796;            /*seed for random start*/
+%let _seedpmr=2374985;           /*seed for random selection*/
+%let _totsize=totsize;           /*total stratum size measure*/
+%let _zone=zone;                 /*selection zone*
+%let _n=n;                       /*no of times unit selected*/
+%let _expn=expn;                 /*expected no of times unit selected*/
+%let _weight=wt1;                /*selection weight*/
+%let _other=stabbr;              /*other vars to put on output data set*/
+%_pmr1s2;                        /*pmr driver*/
+
+***********
+* Notes   *
+***********;
+1.  Drivers:
+    a.  _pmr1
+          Sample sizes are on frame
+          Conventional sorting or no sorting variables
+
+    b.  _pmr2
+          Sample sizes are to be merged onto frame
+          Conventional sorting
+
+    c.  _pmr3
+          No explicit strata
+          Selection is to be with equal probability
+          The sample size is specified by macro variable _sampnum
+          The frame size is specified by macro variable _framenum
+          The frame has already been sorted
+
+    d.  _pmr1s2, _pmr1s3, _pmr1s4, or _pmr1s5
+          Sample sizes are on the frame
+          Serpentine sorting
+
+    e.  _pmr2s2, _pmr2s3, _pmr2s4, pmr2s5
+          Sample sizes are to be merged onto the frame
+          Serpentine sorting
+
+2.  All the explicit stratum variables must be of the same type.
+
+3.  The sorting varibles must be numeric variables. 
+
+4.  For information on added options, see "A Guide to Use of Sample 
+    Selection Macros With Added Options".  

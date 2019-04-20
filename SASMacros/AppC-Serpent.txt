@@ -1,0 +1,69 @@
+**************
+* serpent.mcr*
+**************;
+
+
+%MACRO SERPENT;
+
+ proc sort data=&indsn;
+  by &stratvar &serpvar;
+
+%LET N=1;
+%DO %WHILE (%SCAN(&SERPVAR,&N) NE );
+    %LET N=%EVAL(&N+1);
+%END;
+%LET NSERPVAR=%EVAL(&N-1);
+
+%IF &NSERPVAR LE 1 
+    %THEN %PUT 'ERROR';
+    %ELSE %DO N=1 %TO %EVAL(&NSERPVAR-1);
+
+              %IF &N=1
+                  %THEN %LET SETDSN=&INDSN;
+                  %ELSE %LET SETDSN=WORK;
+
+              %IF &N=%EVAL(&NSERPVAR-1)
+                  %THEN %LET NEXTDSN=&OUTDSN;
+                  %ELSE %LET NEXTDSN=WORK;
+
+              %LET VAR=%SCAN(&SERPVAR,&N);
+
+              %TWOPASS;
+    
+          %END; 
+%MEND SERPENT;
+
+%MACRO TWOPASS;
+DATA CHNGLEV(KEEP=POINTER STOP INCREMNT SIGN);
+     SET &SETDSN;
+     BY &STRATVAR &SERPVAR NOTSORTED;
+ 
+     RETAIN SIGN PREVSIGN FIRST 1;
+  
+     IF LAST.&VAR;
+
+        INCREMNT=PREVSIGN*SIGN;
+
+        IF INCREMNT=1
+           THEN DO; POINTER=FIRST;
+                    STOP=_N_;
+                END;
+           ELSE DO; POINTER=_N_;
+                    STOP=FIRST;
+                END;
+           OUTPUT;
+
+           SIGN=-SIGN;
+           FIRST=_N_+1;
+
+DATA &NEXTDSN(DROP=STOP INCREMNT SIGN);
+     SET CHNGLEV;
+
+     GETOBS: SET &SETDSN POINT=POINTER NOBS=TOTAL;
+             PREVSIGN=SIGN;
+             OUTPUT;
+             IF POINTER NE STOP
+                THEN DO; POINTER+INCREMNT;
+                         GOTO GETOBS;
+                     END;
+%MEND TWOPASS;

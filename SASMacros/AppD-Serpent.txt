@@ -1,0 +1,20 @@
+*****************************************************
+*  Program:        Serpent.mcr                      *
+*  Programmer:                                      *
+*  Last Modified:  September 5, 1997                *
+****************************************************;
+
+************
+* Example  *
+************;
+%include mcr;               
+%let indsn=dsn.one;        /*input data set*/
+%let outdsn=dsn.two;       /*output data set*/
+%let stratvar=class;       /*explicit strata*/
+%let serpvar=var1 var2;    /*sorting variables*/
+%serpent;
+
+************
+* Notes    *
+************;
+1.  Stratvar can be defined by more than one variable.
