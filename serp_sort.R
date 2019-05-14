@@ -1,8 +1,9 @@
 # very much a work in progress
-serp_sort <- function(.data, ...){
+serp_sort <- function(.data, ..., .by_group=FALSE){
   #' Performs a serpentitive sort on a tibble
   #' 
   #' @param .data A tbl 
+  #' @param groupvars A character vector of grouping variables. These will not be sorted serpentine but using a traditional sort. sortvars will be sorted serpentine within groupvars. This can be NULL
   #' @param ... Comma separated list of unquoted variable names.
   #' 
   #' @return An object of same class as \code{.data}
@@ -10,16 +11,15 @@ serp_sort <- function(.data, ...){
   
   require(dplyr)
   require(stringr)
-  # require(checkmate)
-  # coll <- checkmate::makeAssertCollection()
-  # 
-  # checkmate::assertDataFrame(.data, add=coll)
-  # checkmate::assertCharacter(sortvars, add=coll, min.len=1, unique=TRUE)
-  # if (checkmate::testDataFrame(.data)) checkmate::assertSubset(sortvars, names(.data), add=coll)
-  # 
-  # checkmate::reportAssertions(coll)
+
+  if (is_grouped_df(.data) & .by_group==TRUE){
+    datsort <- .data %>% arrange(..., .by_group=TRUE)  
+    group_vs <- groups(.data)
+  } else{
+    datsort <- .data %>% arrange(...)  
+    group_vs <- NULL
+  }
   
-  datsort <- .data %>% arrange(...)
   sort_var <- enquos(...)
 
   ds <- datsort %>%
@@ -32,11 +32,22 @@ serp_sort <- function(.data, ...){
              !!fvn:=firstind,
              !!csn:=cumsum(firstind))
   }
-  
+
   return(list(datsort=ds, sort_var=sort_var))
 }
 
-mystorm <- storms %>% sample_n(1000)
+mystorm <- storms %>% sample_n(1000) 
+mystormg <- mystorm %>%
+  group_by(month)
 
-jl <- serp_sort(mystorm, year, status, category)
-datsort <- jl[[1]]
+j1 <- serp_sort(mystorm, year, status, category)
+# datsort <- jl[[1]]
+
+j2 <- serp_sort(mystormg, year, status, category, .by_group=TRUE)
+j3 <- serp_sort(mystorm, year, status, category, .by_group=FALSE)
+j4 <- serp_sort(mystormg, year, status, category, .by_group=FALSE)
+
+ds1 <- j1[[1]]
+ds2 <- j2[[1]]
+ds3 <- j3[[1]]
+ds4 <- j4[[1]]
